@@ -88,7 +88,13 @@ VPS_PLANS = {
 def load_users():
     try:
         with open(USERS_FILE, 'r') as f:
-            return json.load(f)
+            users = json.load(f)
+            # Ensure balance exists for all users
+            for u in users.values():
+                if 'balance' not in u:
+                    u['balance'] = 0.0
+            save_users(users)
+            return users
     except (FileNotFoundError, json.JSONDecodeError):
         default_users = {
             "admin": {
@@ -99,7 +105,8 @@ def load_users():
                 "created_at": datetime.now().isoformat(),
                 "theme": "dark",
                 "banned": False,
-                "suspended": False
+                "suspended": False,
+                "balance": 0.0
             }
         }
         save_users(default_users)
@@ -397,7 +404,8 @@ def register():
             "created_at": datetime.now().isoformat(),
             "theme": "dark",
             "banned": False,
-            "suspended": False
+            "suspended": False,
+            "balance": 0.0
         }
         save_users(users)
         
@@ -727,46 +735,103 @@ def admin_panel():
                          pending_count=pending_count,
                          uptime=get_uptime())
 
-@app.route('/admin/users')
+@app.route('/admin/users', methods=['GET', 'POST'])
 @admin_required
 def admin_users():
     username = session['username']
     users = load_users()
     user = users[username]
     settings = load_settings()
+    vps_data_global = load_vps_data()
+    uptime = get_uptime()
     
+    if request.method == 'POST':
+        action = request.form.get('action')
+        
+        if not action:  # Add new user form
+            new_username = request.form.get('username')
+            email = request.form.get('email')
+            password = request.form.get('password')
+            role = request.form.get('role', 'user')
+            
+            if not all([new_username, email, password]):
+                flash('All fields are required.', 'error')
+            elif new_username in users:
+                flash('Username already exists.', 'error')
+            elif any(u['email'] == email for u in users.values()):
+                flash('Email already exists.', 'error')
+            else:
+                users[new_username] = {
+                    "username": new_username,
+                    "email": email,
+                    "password": generate_password_hash(password),
+                    "role": role,
+                    "created_at": datetime.now().isoformat(),
+                    "theme": "dark",
+                    "banned": False,
+                    "suspended": False,
+                    "balance": 0.0
+                }
+                save_users(users)
+                flash(f'User {new_username} added successfully', 'success')
+                return redirect(url_for('admin_users'))
+        
+        elif action == 'add_balance':
+            target_username = request.form.get('username')
+            amount_str = request.form.get('amount')
+            try:
+                amount = float(amount_str)
+                if target_username in users and amount > 0:
+                    users[target_username]['balance'] += amount
+                    save_users(users)
+                    return jsonify({'success': True, 'message': f'Added ₹{amount} to {target_username}\'s balance.'})
+                else:
+                    return jsonify({'success': False, 'message': 'Invalid user or amount.'})
+            except ValueError:
+                return jsonify({'success': False, 'message': 'Invalid amount.'})
+        
+        elif action == 'delete':
+            target_username = request.form.get('username')
+            if target_username in users and users[target_username]['role'] != 'admin':
+                # Delete VPS first
+                vps_data = load_vps_data()
+                if target_username in vps_data:
+                    for vps in vps_data[target_username]:
+                        try:
+                            execute_lxc_sync(f"lxc delete {vps['container_name']} --force")
+                        except:
+                            pass
+                    del vps_data[target_username]
+                    save_vps_data(vps_data)
+                del users[target_username]
+                save_users(users)
+                return jsonify({'success': True, 'message': f'User {target_username} deleted.'})
+            else:
+                return jsonify({'success': False, 'message': 'Cannot delete admin or invalid user.'})
+        
+        elif action == 'toggle_role':
+            target_username = request.form.get('username')
+            target_role = request.form.get('target_role')
+            if target_username in users and target_role in ['user', 'admin']:
+                if users[target_username]['role'] == target_role:
+                    return jsonify({'success': False, 'message': 'No change needed.'})
+                if target_role == 'user' and target_username == session['username']:
+                    return jsonify({'success': False, 'message': 'Cannot demote yourself.'})
+                users[target_username]['role'] = target_role
+                save_users(users)
+                return jsonify({'success': True, 'message': f'Role changed to {target_role} for {target_username}.'})
+            else:
+                return jsonify({'success': False, 'message': 'Invalid user or role.'})
+        
+        return redirect(url_for('admin_users'))
+    
+    # GET: Render template
     return render_template('admin/users.html',
                          user=user,
                          settings=settings,
-                         users=users)
-
-@app.route('/admin/users/add', methods=['POST'])
-@admin_required
-def admin_add_user():
-    new_username = request.form.get('username')
-    email = request.form.get('email')
-    password = request.form.get('password')
-    role = request.form.get('role')
-    
-    users = load_users()
-    if new_username in users:
-        flash('Username already exists', 'error')
-        return redirect(url_for('admin_users'))
-    
-    users[new_username] = {
-        "username": new_username,
-        "email": email,
-        "password": generate_password_hash(password),
-        "role": role,
-        "created_at": datetime.now().isoformat(),
-        "theme": "dark",
-        "banned": False,
-        "suspended": False
-    }
-    save_users(users)
-    
-    flash(f'User {new_username} added successfully', 'success')
-    return redirect(url_for('admin_users'))
+                         users=users,
+                         vps_data=vps_data_global,
+                         uptime=uptime)
 
 @app.route('/admin/users/delete/<target_username>')
 @admin_required
@@ -954,6 +1019,217 @@ def admin_unsuspend_vps(owner, vps_id):
                 break
     return redirect(url_for('admin_vps'))
 
+@app.route('/admin/vps/action/<owner>/<vps_id>/<action>', methods=['POST'])
+@admin_required
+def admin_vps_action(owner, vps_id, action):
+    """Handle VPS control actions from admin panel"""
+    vps_data = load_vps_data()
+    
+    if owner not in vps_data:
+        return jsonify({'success': False, 'message': 'User not found'})
+    
+    vps = None
+    for v in vps_data[owner]:
+        if v['container_name'] == vps_id:
+            vps = v
+            break
+    
+    if not vps:
+        return jsonify({'success': False, 'message': 'VPS not found'})
+    
+    try:
+        if action == 'start':
+            execute_lxc_sync(f"lxc start {vps_id}")
+            vps['status'] = 'running'
+            save_vps_data(vps_data)
+            return jsonify({'success': True, 'message': 'VPS started successfully'})
+        
+        elif action == 'stop':
+            execute_lxc_sync(f"lxc stop {vps_id}")
+            vps['status'] = 'stopped'
+            save_vps_data(vps_data)
+            return jsonify({'success': True, 'message': 'VPS stopped successfully'})
+        
+        elif action == 'restart':
+            execute_lxc_sync(f"lxc restart {vps_id}")
+            vps['status'] = 'running'
+            save_vps_data(vps_data)
+            return jsonify({'success': True, 'message': 'VPS restarted successfully'})
+        
+        elif action == 'reinstall':
+            # Backup current config
+            ram = vps['ram']
+            cpu = vps['cpu']
+            disk = vps['storage']
+            
+            # Delete and recreate
+            execute_lxc_sync(f"lxc delete {vps_id} --force")
+            execute_lxc_sync(f"lxc init ubuntu:22.04 {vps_id} --storage {DEFAULT_STORAGE_POOL}")
+            
+            # Reapply config
+            ram_mb = int(ram.replace('GB', '')) * 1024
+            execute_lxc_sync(f"lxc config set {vps_id} limits.memory {ram_mb}MB")
+            execute_lxc_sync(f"lxc config set {vps_id} limits.cpu {cpu}")
+            execute_lxc_sync(f"lxc config device set {vps_id} root size {disk}")
+            execute_lxc_sync(f"lxc start {vps_id}")
+            
+            vps['status'] = 'running'
+            save_vps_data(vps_data)
+            return jsonify({'success': True, 'message': 'VPS reinstalled successfully'})
+        
+        else:
+            return jsonify({'success': False, 'message': 'Invalid action'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/admin/vps/details/<owner>/<vps_id>')
+@admin_required
+def admin_vps_details(owner, vps_id):
+    """Get detailed VPS statistics"""
+    try:
+        status = get_container_status(vps_id)
+        cpu = get_container_cpu(vps_id)
+        memory = get_container_memory(vps_id)
+        disk = get_container_disk(vps_id)
+        
+        # Get uptime
+        try:
+            result = subprocess.run(
+                ['lxc', 'exec', vps_id, '--', 'uptime', '-p'],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            uptime = result.stdout.strip()
+        except:
+            uptime = 'Unknown'
+        
+        return jsonify({
+            'success': True,
+            'details': {
+                'status': status,
+                'cpu': cpu,
+                'memory': memory,
+                'disk': disk,
+                'uptime': uptime
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/admin/vps/ssh/<owner>/<vps_id>', methods=['POST'])
+@admin_required
+def admin_vps_ssh(owner, vps_id):
+    """Generate SSH session for VPS"""
+    try:
+        # Install tmate if not exists
+        try:
+            execute_lxc_sync(f"lxc exec {vps_id} -- which tmate")
+        except:
+            execute_lxc_sync(f"lxc exec {vps_id} -- apt-get update -y", timeout=300)
+            execute_lxc_sync(f"lxc exec {vps_id} -- apt-get install tmate -y", timeout=300)
+        
+        # Create SSH session
+        session_name = f"svm-session-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        execute_lxc_sync(f"lxc exec {vps_id} -- tmate -S /tmp/{session_name}.sock new-session -d")
+        time.sleep(2)
+        
+        # Get SSH command
+        ssh_cmd = execute_lxc_sync(f"lxc exec {vps_id} -- tmate -S /tmp/{session_name}.sock display -p '{{{{tmate_ssh}}}}'")
+        
+        return jsonify({
+            'success': True,
+            'ssh_command': ssh_cmd
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/admin/vps/resize/<owner>/<vps_id>', methods=['POST'])
+@admin_required
+def admin_vps_resize(owner, vps_id):
+    """Resize VPS resources"""
+    ram = int(request.form.get('ram'))
+    cpu = int(request.form.get('cpu'))
+    disk = int(request.form.get('disk'))
+    
+    vps_data = load_vps_data()
+    
+    if owner not in vps_data:
+        flash('User not found', 'error')
+        return redirect(url_for('admin_vps'))
+    
+    vps = None
+    for v in vps_data[owner]:
+        if v['container_name'] == vps_id:
+            vps = v
+            break
+    
+    if not vps:
+        flash('VPS not found', 'error')
+        return redirect(url_for('admin_vps'))
+    
+    try:
+        # Stop VPS if running
+        was_running = vps.get('status') == 'running'
+        if was_running:
+            execute_lxc_sync(f"lxc stop {vps_id}")
+        
+        # Update resources
+        ram_mb = ram * 1024
+        execute_lxc_sync(f"lxc config set {vps_id} limits.memory {ram_mb}MB")
+        execute_lxc_sync(f"lxc config set {vps_id} limits.cpu {cpu}")
+        execute_lxc_sync(f"lxc config device set {vps_id} root size {disk}GB")
+        
+        # Restart if it was running
+        if was_running:
+            execute_lxc_sync(f"lxc start {vps_id}")
+        
+        # Update data
+        vps['ram'] = f"{ram}GB"
+        vps['cpu'] = str(cpu)
+        vps['storage'] = f"{disk}GB"
+        vps['config'] = f"{ram}GB RAM / {cpu} CPU / {disk}GB Disk"
+        save_vps_data(vps_data)
+        
+        flash(f'VPS {vps_id} resized successfully', 'success')
+    except Exception as e:
+        flash(f'Failed to resize VPS: {str(e)}', 'error')
+    
+    return redirect(url_for('admin_vps'))
+
+@app.route('/admin/vps/command/<owner>/<vps_id>', methods=['POST'])
+@admin_required
+def admin_vps_command(owner, vps_id):
+    """Execute command in VPS"""
+    try:
+        data = request.get_json()
+        command = data.get('command', '')
+        
+        if not command:
+            return jsonify({'success': False, 'message': 'No command provided'})
+        
+        # Execute command in container
+        result = subprocess.run(
+            ['lxc', 'exec', vps_id, '--', 'bash', '-c', command],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        
+        output = result.stdout if result.stdout else result.stderr
+        if not output:
+            output = 'Command executed successfully (no output)'
+        
+        return jsonify({
+            'success': True,
+            'output': output
+        })
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False, 'message': 'Command timeout'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
 @app.route('/admin/payments')
 @admin_required
 def admin_payments():
@@ -1075,4 +1351,4 @@ def admin_settings():
                          settings=settings)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=3000, debug=True)
