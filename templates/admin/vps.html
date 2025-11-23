@@ -1,0 +1,441 @@
+{% extends "base.html" %}
+{% block title %}Manage VPS - {{ settings.panel_name }}{% endblock %}
+{% block content %}
+<div class="main-container">
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            {% if settings.logo %}
+            <img src="{{ settings.logo }}" alt="Logo" class="sidebar-logo">
+            {% else %}
+            <i class="fas fa-server sidebar-icon"></i>
+            {% endif %}
+            <h2>{{ settings.panel_name }}</h2>
+        </div>
+
+        <ul class="sidebar-menu">
+            <li>
+                <a href="{{ url_for('dashboard') }}">
+                    <i class="fas fa-home"></i> User Dashboard
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('admin_panel') }}">
+                    <i class="fas fa-tachometer-alt"></i> Admin Dashboard
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('admin_users') }}">
+                    <i class="fas fa-users"></i> Manage Users
+                </a>
+            </li>
+            <li class="active">
+                <a href="{{ url_for('admin_vps') }}">
+                    <i class="fas fa-server"></i> Manage VPS
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('admin_payments') }}">
+                    <i class="fas fa-money-bill-wave"></i> Payments
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('admin_settings') }}">
+                    <i class="fas fa-cog"></i> Settings
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('logout') }}">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </li>
+        </ul>
+    </nav>
+
+    <div class="main-content">
+        <div class="top-bar">
+            <div class="welcome-message">
+                <h1><i class="fas fa-server"></i> Manage VPS</h1>
+                <p>View and manage all VPS instances</p>
+            </div>
+            <button class="btn btn-primary" onclick="showCreateVPSModal()">
+                <i class="fas fa-plus-circle"></i> Create VPS
+            </button>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">
+                    {{ message }}
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="stats-grid" style="margin-bottom: 30px;">
+            <div class="stat-card">
+                <div class="stat-icon green">
+                    <i class="fas fa-server"></i>
+                </div>
+                <div class="stat-info">
+                    <h3>Total VPS</h3>
+                    <p class="stat-value">{{ total_vps }}</p>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon blue">
+                    <i class="fas fa-play-circle"></i>
+                </div>
+                <div class="stat-info">
+                    <h3>Running</h3>
+                    <p class="stat-value">{{ running_vps }}</p>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon orange">
+                    <i class="fas fa-pause-circle"></i>
+                </div>
+                <div class="stat-info">
+                    <h3>Stopped</h3>
+                    <p class="stat-value">{{ stopped_vps }}</p>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon purple">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <div class="stat-info">
+                    <h3>Pending</h3>
+                    <p class="stat-value">{{ pending_vps }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="content-card">
+            <div class="card-header">
+                <h2><i class="fas fa-list"></i> All VPS Instances</h2>
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="searchInput" placeholder="Search VPS..." onkeyup="filterVPS()">
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="data-table" id="vpsTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Owner</th>
+                            <th>Plan</th>
+                            <th>IP Address</th>
+                            <th>Resources</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for vps in vps_list %}
+                        <tr>
+                            <td>{{ vps.id }}</td>
+                            <td>
+                                <div class="vps-info">
+                                    <i class="fas fa-server"></i>
+                                    <strong>{{ vps.name }}</strong>
+                                </div>
+                            </td>
+                            <td>
+                                <i class="fas fa-user"></i> {{ vps.user.username }}
+                            </td>
+                            <td>
+                                <span class="badge badge-info">
+                                    {{ vps.plan.name }}
+                                </span>
+                            </td>
+                            <td>
+                                <code>{{ vps.ip_address }}</code>
+                            </td>
+                            <td>
+                                <div class="resources-info">
+                                    <span title="RAM">
+                                        <i class="fas fa-memory"></i> {{ vps.ram }}GB
+                                    </span>
+                                    <span title="CPU">
+                                        <i class="fas fa-microchip"></i> {{ vps.cpu }} Core(s)
+                                    </span>
+                                    <span title="Disk">
+                                        <i class="fas fa-hdd"></i> {{ vps.disk }}GB
+                                    </span>
+                                </div>
+                            </td>
+                            <td>
+                                {% if vps.status == 'running' %}
+                                <span class="status-badge running">
+                                    <i class="fas fa-circle"></i> Running
+                                </span>
+                                {% elif vps.status == 'stopped' %}
+                                <span class="status-badge stopped">
+                                    <i class="fas fa-circle"></i> Stopped
+                                </span>
+                                {% elif vps.status == 'pending' %}
+                                <span class="status-badge pending">
+                                    <i class="fas fa-circle"></i> Pending
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td>{{ vps.created_at.strftime('%Y-%m-%d') }}</td>
+                            <td>
+                                <div class="action-buttons">
+                                    {% if vps.status == 'running' %}
+                                    <button class="btn-icon btn-warning" onclick="stopVPS({{ vps.id }})" title="Stop">
+                                        <i class="fas fa-stop"></i>
+                                    </button>
+                                    {% elif vps.status == 'stopped' %}
+                                    <button class="btn-icon btn-success" onclick="startVPS({{ vps.id }})" title="Start">
+                                        <i class="fas fa-play"></i>
+                                    </button>
+                                    {% endif %}
+                                    <button class="btn-icon btn-info" onclick="editVPS({{ vps.id }})" title="Edit">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="btn-icon btn-danger" onclick="deleteVPS({{ vps.id }})" title="Delete">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create VPS Modal -->
+<div id="createVPSModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2><i class="fas fa-plus-circle"></i> Create New VPS</h2>
+            <span class="close" onclick="closeModal('createVPSModal')">&times;</span>
+        </div>
+        <form method="POST" action="{{ url_for('admin_vps') }}">
+            <div class="form-group">
+                <label><i class="fas fa-server"></i> VPS Name</label>
+                <input type="text" name="name" required placeholder="e.g., My-Server-01">
+            </div>
+            <div class="form-group">
+                <label><i class="fas fa-user"></i> User</label>
+                <select name="user_id" required>
+                    <option value="">Select User</option>
+                    {% for user in users %}
+                    <option value="{{ user.id }}">{{ user.username }} ({{ user.email }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label><i class="fas fa-cube"></i> Plan</label>
+                <select name="plan_id" required>
+                    <option value="">Select Plan</option>
+                    {% for plan in plans %}
+                    <option value="{{ plan.id }}">
+                        {{ plan.name }} - {{ plan.ram }}GB RAM, {{ plan.cpu }} CPU, {{ plan.disk }}GB Disk
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label><i class="fas fa-network-wired"></i> IP Address</label>
+                <input type="text" name="ip_address" required placeholder="e.g., 192.168.1.100">
+            </div>
+            <div class="form-group">
+                <label><i class="fas fa-key"></i> Root Password</label>
+                <input type="password" name="root_password" required>
+            </div>
+            <div class="form-group">
+                <label><i class="fas fa-compact-disc"></i> Operating System</label>
+                <select name="os" required>
+                    <option value="Ubuntu 22.04">Ubuntu 22.04</option>
+                    <option value="Ubuntu 20.04">Ubuntu 20.04</option>
+                    <option value="Debian 11">Debian 11</option>
+                    <option value="CentOS 8">CentOS 8</option>
+                    <option value="Windows Server 2019">Windows Server 2019</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('createVPSModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> Create VPS
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.vps-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.vps-info i {
+    font-size: 20px;
+    color: var(--accent-blue);
+}
+
+.resources-info {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 12px;
+}
+
+.resources-info span {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.resources-info i {
+    color: var(--text-secondary);
+}
+
+code {
+    background: var(--bg-primary);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    color: var(--accent-blue);
+}
+
+.status-badge.running {
+    background: rgba(39, 174, 96, 0.2);
+    color: #27ae60;
+}
+
+.status-badge.running i {
+    animation: pulse 2s infinite;
+}
+
+.status-badge.stopped {
+    background: rgba(149, 165, 166, 0.2);
+    color: #95a5a6;
+}
+
+.status-badge.pending {
+    background: rgba(243, 156, 18, 0.2);
+    color: #f39c12;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.btn-warning {
+    background: #f39c12;
+    color: white;
+}
+
+select {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+select option {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+</style>
+
+<script>
+function showCreateVPSModal() {
+    document.getElementById('createVPSModal').style.display = 'block';
+}
+
+function closeModal(modalId) {
+    document.getElementById(modalId).style.display = 'none';
+}
+
+function filterVPS() {
+    const input = document.getElementById('searchInput');
+    const filter = input.value.toLowerCase();
+    const table = document.getElementById('vpsTable');
+    const rows = table.getElementsByTagName('tr');
+
+    for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(filter) ? '' : 'none';
+    }
+}
+
+function startVPS(vpsId) {
+    if (confirm('Are you sure you want to start this VPS?')) {
+        fetch(`/admin/vps/${vpsId}/start`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        });
+    }
+}
+
+function stopVPS(vpsId) {
+    if (confirm('Are you sure you want to stop this VPS?')) {
+        fetch(`/admin/vps/${vpsId}/stop`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        });
+    }
+}
+
+function editVPS(vpsId) {
+    window.location.href = `/admin/vps/${vpsId}/edit`;
+}
+
+function deleteVPS(vpsId) {
+    if (confirm('Are you sure you want to delete this VPS? This action cannot be undone!')) {
+        fetch(`/admin/vps/${vpsId}/delete`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        });
+    }
+}
+
+window.onclick = function(event) {
+    const modal = document.getElementById('createVPSModal');
+    if (event.target == modal) {
+        closeModal('createVPSModal');
+    }
+}
+</script>
+{% endblock %}
