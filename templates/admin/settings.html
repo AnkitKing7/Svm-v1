@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Admin Settings - {{ settings.panel_name }}{% endblock %}
+{% block title %}Panel Settings - {{ settings.panel_name }}{% endblock %}
 {% block content %}
 <div class="main-container">
     <nav class="sidebar">
@@ -55,358 +55,323 @@
         <div class="top-bar">
             <div class="welcome-message">
                 <h1><i class="fas fa-cog"></i> Panel Settings</h1>
-                <p>Configure your VPS panel settings</p>
+                <p>Configure your VPS panel</p>
+            </div>
+            <div class="uptime-display">
+                <i class="fas fa-clock"></i> {{ uptime }}
             </div>
         </div>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                <div class="alert alert-{{ category }}">
-                    {{ message }}
+        <form method="POST" action="{{ url_for('admin_settings') }}" enctype="multipart/form-data" class="settings-form">
+            
+            <!-- General Settings -->
+            <div class="admin-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-info-circle"></i> General Settings</h2>
                 </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-
-        <!-- Settings Tabs -->
-        <div class="settings-tabs">
-            <button class="settings-tab active" onclick="showTab('general')">
-                <i class="fas fa-home"></i> General Settings
-            </button>
-            <button class="settings-tab" onclick="showTab('payment')">
-                <i class="fas fa-credit-card"></i> Payment Settings
-            </button>
-            <button class="settings-tab" onclick="showTab('email')">
-                <i class="fas fa-envelope"></i> Email Settings
-            </button>
-            <button class="settings-tab" onclick="showTab('appearance')">
-                <i class="fas fa-palette"></i> Appearance
-            </button>
-        </div>
-
-        <!-- General Settings -->
-        <div id="general-tab" class="settings-section active">
-            <div class="content-card">
-                <div class="card-header">
-                    <h2><i class="fas fa-home"></i> General Settings</h2>
-                </div>
-                <form method="POST" action="{{ url_for('admin_settings') }}" enctype="multipart/form-data">
-                    <input type="hidden" name="section" value="general">
-                    
-                    <div class="form-group">
-                        <label><i class="fas fa-tag"></i> Panel Name</label>
+                
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label><i class="fas fa-heading"></i> Panel Name</label>
                         <input type="text" name="panel_name" value="{{ settings.panel_name }}" required>
-                        <small>The name of your VPS panel</small>
+                        <small>The name displayed across your VPS panel</small>
                     </div>
 
-                    <div class="form-group">
-                        <label><i class="fas fa-info-circle"></i> Panel Description</label>
-                        <textarea name="panel_description" rows="3">{{ settings.panel_description }}</textarea>
-                        <small>Brief description of your service</small>
+                    <div class="form-group full-width">
+                        <label><i class="fas fa-bullhorn"></i> Announcement</label>
+                        <textarea name="announcement" rows="3" placeholder="Enter announcement message...">{{ settings.announcement }}</textarea>
+                        <small>Displayed on the login/register page</small>
                     </div>
-
-                    <div class="form-group">
-                        <label><i class="fas fa-envelope"></i> Admin Email</label>
-                        <input type="email" name="admin_email" value="{{ settings.admin_email }}" required>
-                        <small>Main contact email for the panel</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label><i class="fas fa-globe"></i> Website URL</label>
-                        <input type="url" name="website_url" value="{{ settings.website_url }}">
-                        <small>Your website URL (optional)</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" name="maintenance_mode" {% if settings.maintenance_mode %}checked{% endif %}>
-                            <i class="fas fa-wrench"></i> Maintenance Mode
-                        </label>
-                        <small>Enable to restrict access for maintenance</small>
-                    </div>
-
-                    <div class="form-actions">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save"></i> Save Changes
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <!-- Payment Settings -->
-        <div id="payment-tab" class="settings-section">
-            <div class="content-card">
-                <div class="card-header">
-                    <h2><i class="fas fa-credit-card"></i> Payment Gateway Settings</h2>
                 </div>
-                <form method="POST" action="{{ url_for('admin_settings') }}">
-                    <input type="hidden" name="section" value="payment">
-                    
-                    <div class="form-group">
-                        <label><i class="fas fa-dollar-sign"></i> Currency</label>
-                        <select name="currency">
-                            <option value="USD" {% if settings.currency == 'USD' %}selected{% endif %}>USD - US Dollar</option>
-                            <option value="EUR" {% if settings.currency == 'EUR' %}selected{% endif %}>EUR - Euro</option>
-                            <option value="GBP" {% if settings.currency == 'GBP' %}selected{% endif %}>GBP - British Pound</option>
-                            <option value="INR" {% if settings.currency == 'INR' %}selected{% endif %}>INR - Indian Rupee</option>
-                        </select>
-                    </div>
-
-                    <div class="payment-method-section">
-                        <h3><i class="fas fa-credit-card"></i> PayPal</h3>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" name="paypal_enabled" {% if settings.paypal_enabled %}checked{% endif %}>
-                                Enable PayPal
-                            </label>
-                        </div>
-                        <div class="form-group">
-                            <label>PayPal Client ID</label>
-                            <input type="text" name="paypal_client_id" value="{{ settings.paypal_client_id }}">
-                        </div>
-                        <div class="form-group">
-                            <label>PayPal Secret</label>
-                            <input type="password" name="paypal_secret" value="{{ settings.paypal_secret }}">
-                        </div>
-                    </div>
-
-                    <div class="payment-method-section">
-                        <h3><i class="fas fa-stripe"></i> Stripe</h3>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" name="stripe_enabled" {% if settings.stripe_enabled %}checked{% endif %}>
-                                Enable Stripe
-                            </label>
-                        </div>
-                        <div class="form-group">
-                            <label>Stripe Publishable Key</label>
-                            <input type="text" name="stripe_public_key" value="{{ settings.stripe_public_key }}">
-                        </div>
-                        <div class="form-group">
-                            <label>Stripe Secret Key</label>
-                            <input type="password" name="stripe_secret_key" value="{{ settings.stripe_secret_key }}">
-                        </div>
-                    </div>
-
-                    <div class="payment-method-section">
-                        <h3><i class="fas fa-money-bill"></i> Manual Payment</h3>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" name="manual_payment_enabled" {% if settings.manual_payment_enabled %}checked{% endif %}>
-                                Enable Manual Payment (Bank Transfer, etc.)
-                            </label>
-                        </div>
-                        <div class="form-group">
-                            <label>Payment Instructions</label>
-                            <textarea name="manual_payment_instructions" rows="5">{{ settings.manual_payment_instructions }}</textarea>
-                            <small>Instructions for manual payment (bank details, etc.)</small>
-                        </div>
-                    </div>
-
-                    <div class="form-actions">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save"></i> Save Payment Settings
-                        </button>
-                    </div>
-                </form>
             </div>
-        </div>
 
-        <!-- Email Settings -->
-        <div id="email-tab" class="settings-section">
-            <div class="content-card">
-                <div class="card-header">
-                    <h2><i class="fas fa-envelope"></i> Email Configuration</h2>
+            <!-- Branding -->
+            <div class="admin-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-palette"></i> Branding & Appearance</h2>
                 </div>
-                <form method="POST" action="{{ url_for('admin_settings') }}">
-                    <input type="hidden" name="section" value="email">
-                    
-                    <div class="form-group">
-                        <label><i class="fas fa-server"></i> SMTP Host</label>
-                        <input type="text" name="smtp_host" value="{{ settings.smtp_host }}">
-                        <small>e.g., smtp.gmail.com</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label><i class="fas fa-network-wired"></i> SMTP Port</label>
-                        <input type="number" name="smtp_port" value="{{ settings.smtp_port }}">
-                        <small>Common: 587 (TLS), 465 (SSL), 25 (standard)</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label><i class="fas fa-user"></i> SMTP Username</label>
-                        <input type="text" name="smtp_username" value="{{ settings.smtp_username }}">
-                    </div>
-
-                    <div class="form-group">
-                        <label><i class="fas fa-lock"></i> SMTP Password</label>
-                        <input type="password" name="smtp_password" value="{{ settings.smtp_password }}">
-                    </div>
-
-                    <div class="form-group">
-                        <label><i class="fas fa-envelope"></i> From Email</label>
-                        <input type="email" name="email_from" value="{{ settings.email_from }}">
-                        <small>Email address to send from</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" name="smtp_tls" {% if settings.smtp_tls %}checked{% endif %}>
-                            <i class="fas fa-shield-alt"></i> Use TLS
-                        </label>
-                    </div>
-
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-secondary" onclick="testEmail()">
-                            <i class="fas fa-paper-plane"></i> Send Test Email
-                        </button>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save"></i> Save Email Settings
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <!-- Appearance Settings -->
-        <div id="appearance-tab" class="settings-section">
-            <div class="content-card">
-                <div class="card-header">
-                    <h2><i class="fas fa-palette"></i> Appearance Settings</h2>
-                </div>
-                <form method="POST" action="{{ url_for('admin_settings') }}" enctype="multipart/form-data">
-                    <input type="hidden" name="section" value="appearance">
-                    
+                
+                <div class="form-grid">
                     <div class="form-group">
                         <label><i class="fas fa-image"></i> Panel Logo</label>
-                        <input type="file" name="logo" accept="image/*">
-                        {% if settings.logo %}
-                        <div class="current-logo">
-                            <img src="{{ settings.logo }}" alt="Current Logo">
-                            <small>Current logo</small>
+                        <div class="file-upload-wrapper">
+                            {% if settings.logo %}
+                            <div class="current-image">
+                                <img src="{{ settings.logo }}" alt="Current Logo">
+                                <span>Current Logo</span>
+                            </div>
+                            {% endif %}
+                            <input type="file" name="logo" accept="image/*" id="logoInput">
+                            <label for="logoInput" class="file-upload-label">
+                                <i class="fas fa-upload"></i> Choose Logo
+                            </label>
                         </div>
-                        {% endif %}
+                        <small>Recommended: 200x200px PNG with transparent background</small>
                     </div>
 
                     <div class="form-group">
                         <label><i class="fas fa-image"></i> Background Image</label>
-                        <input type="file" name="background" accept="image/*">
-                        {% if settings.background %}
-                        <div class="current-background">
-                            <img src="{{ settings.background }}" alt="Current Background">
-                            <small>Current background (displayed with opacity)</small>
+                        <div class="file-upload-wrapper">
+                            {% if settings.background %}
+                            <div class="current-image">
+                                <img src="{{ settings.background }}" alt="Current Background">
+                                <span>Current Background</span>
+                            </div>
+                            {% endif %}
+                            <input type="file" name="background" accept="image/*" id="bgInput">
+                            <label for="bgInput" class="file-upload-label">
+                                <i class="fas fa-upload"></i> Choose Background
+                            </label>
                         </div>
-                        {% endif %}
+                        <small>Recommended: 1920x1080px or higher resolution</small>
                     </div>
-
-                    <div class="form-group">
-                        <label><i class="fas fa-paint-brush"></i> Primary Color</label>
-                        <input type="color" name="primary_color" value="{{ settings.primary_color or '#3498db' }}">
-                        <small>Main accent color for the panel</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label><i class="fas fa-moon"></i> Default Theme</label>
-                        <select name="default_theme">
-                            <option value="dark" {% if settings.default_theme == 'dark' %}selected{% endif %}>Dark Theme</option>
-                            <option value="light" {% if settings.default_theme == 'light' %}selected{% endif %}>Light Theme</option>
-                        </select>
-                    </div>
-
-                    <div class="form-actions">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save"></i> Save Appearance
-                        </button>
-                    </div>
-                </form>
+                </div>
             </div>
-        </div>
+
+            <!-- Payment Settings -->
+            <div class="admin-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-credit-card"></i> Payment Settings</h2>
+                </div>
+                
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label><i class="fas fa-university"></i> UPI ID</label>
+                        <input type="text" name="upi_id" value="{{ settings.upi_id }}" placeholder="your-upi@bank">
+                        <small>Your UPI ID for receiving payments</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fas fa-qrcode"></i> UPI QR Code</label>
+                        <div class="file-upload-wrapper">
+                            {% if settings.qr_code %}
+                            <div class="current-image">
+                                <img src="{{ settings.qr_code }}" alt="Current QR Code">
+                                <span>Current QR Code</span>
+                            </div>
+                            {% endif %}
+                            <input type="file" name="qr_code" accept="image/*" id="qrInput">
+                            <label for="qrInput" class="file-upload-label">
+                                <i class="fas fa-upload"></i> Choose QR Code
+                            </label>
+                        </div>
+                        <small>UPI QR code for payment scanning</small>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label><i class="fas fa-info-circle"></i> Payment Instructions</label>
+                        <textarea name="payment_instructions" rows="4" placeholder="Enter payment instructions...">{{ settings.payment_instructions }}</textarea>
+                        <small>Instructions shown to users during payment</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Proxmox Settings -->
+            <div class="admin-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-server"></i> Proxmox Configuration</h2>
+                </div>
+                
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label><i class="fas fa-network-wired"></i> Proxmox Host</label>
+                        <input type="text" name="proxmox_host" value="{{ settings.proxmox_host }}" placeholder="192.168.1.100">
+                        <small>IP address or hostname of Proxmox server</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fas fa-user"></i> Proxmox User</label>
+                        <input type="text" name="proxmox_user" value="{{ settings.proxmox_user }}" placeholder="root@pam">
+                        <small>Proxmox username (e.g., root@pam)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fas fa-key"></i> Proxmox Password</label>
+                        <input type="password" name="proxmox_password" value="{{ settings.proxmox_password }}" placeholder="Enter password">
+                        <small>Proxmox user password</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fas fa-hdd"></i> Storage Pool</label>
+                        <input type="text" name="storage_pool" value="{{ settings.storage_pool }}" placeholder="local-lvm">
+                        <small>Default storage pool for VPS disks</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fas fa-ethernet"></i> Network Bridge</label>
+                        <input type="text" name="network_bridge" value="{{ settings.network_bridge }}" placeholder="vmbr0">
+                        <small>Network bridge interface (e.g., vmbr0)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fas fa-sitemap"></i> Node Name</label>
+                        <input type="text" name="node_name" value="{{ settings.node_name }}" placeholder="pve">
+                        <small>Proxmox node name</small>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <button type="button" class="btn btn-secondary" onclick="testProxmoxConnection()">
+                        <i class="fas fa-plug"></i> Test Connection
+                    </button>
+                    <span id="connectionStatus" class="connection-status"></span>
+                </div>
+            </div>
+
+            <!-- Email Settings -->
+            <div class="admin-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-envelope"></i> Email Configuration</h2>
+                </div>
+                
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label><i class="fas fa-server"></i> SMTP Server</label>
+                        <input type="text" name="smtp_server" value="{{ settings.smtp_server }}" placeholder="smtp.gmail.com">
+                        <small>SMTP server address</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fas fa-hashtag"></i> SMTP Port</label>
+                        <input type="number" name="smtp_port" value="{{ settings.smtp_port }}" placeholder="587">
+                        <small>SMTP port (usually 587 or 465)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fas fa-user"></i> SMTP Username</label>
+                        <input type="text" name="smtp_username" value="{{ settings.smtp_username }}" placeholder="your-email@gmail.com">
+                        <small>Email address for SMTP authentication</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fas fa-lock"></i> SMTP Password</label>
+                        <input type="password" name="smtp_password" value="{{ settings.smtp_password }}" placeholder="Enter password">
+                        <small>SMTP password or app password</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fas fa-envelope"></i> From Email</label>
+                        <input type="email" name="from_email" value="{{ settings.from_email }}" placeholder="noreply@yourpanel.com">
+                        <small>Email address shown in "From" field</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fas fa-shield-alt"></i> Use TLS</label>
+                        <select name="use_tls">
+                            <option value="true" {% if settings.use_tls %}selected{% endif %}>Yes</option>
+                            <option value="false" {% if not settings.use_tls %}selected{% endif %}>No</option>
+                        </select>
+                        <small>Enable TLS encryption</small>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <button type="button" class="btn btn-secondary" onclick="testEmailConfig()">
+                        <i class="fas fa-paper-plane"></i> Send Test Email
+                    </button>
+                    <span id="emailStatus" class="connection-status"></span>
+                </div>
+            </div>
+
+            <!-- Security Settings -->
+            <div class="admin-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-shield-alt"></i> Security & Limits</h2>
+                </div>
+                
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label><i class="fas fa-ban"></i> Max VPS Per User</label>
+                        <input type="number" name="max_vps_per_user" value="{{ settings.max_vps_per_user }}" min="1">
+                        <small>Maximum VPS instances per user account</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fas fa-users"></i> Allow Registration</label>
+                        <select name="allow_registration">
+                            <option value="true" {% if settings.allow_registration %}selected{% endif %}>Enabled</option>
+                            <option value="false" {% if not settings.allow_registration %}selected{% endif %}>Disabled</option>
+                        </select>
+                        <small>Allow new user registrations</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fas fa-clock"></i> Session Timeout (minutes)</label>
+                        <input type="number" name="session_timeout" value="{{ settings.session_timeout }}" min="5">
+                        <small>Auto-logout inactive users after this time</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fas fa-eye"></i> Maintenance Mode</label>
+                        <select name="maintenance_mode">
+                            <option value="false" {% if not settings.maintenance_mode %}selected{% endif %}>Off</option>
+                            <option value="true" {% if settings.maintenance_mode %}selected{% endif %}>On</option>
+                        </select>
+                        <small>Restrict access to admins only</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Save Button -->
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary btn-large">
+                    <i class="fas fa-save"></i> Save All Settings
+                </button>
+                <button type="reset" class="btn btn-secondary btn-large">
+                    <i class="fas fa-undo"></i> Reset Changes
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 
 <style>
-.settings-tabs {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 30px;
-    flex-wrap: wrap;
+.settings-form {
+    max-width: 1200px;
 }
 
-.settings-tab {
-    padding: 15px 25px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.3s;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 14px;
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
 }
 
-.settings-tab:hover {
-    background: var(--accent-blue);
-    color: white;
-    transform: translateY(-2px);
-}
-
-.settings-tab.active {
-    background: var(--accent-blue);
-    color: white;
-    border-color: var(--accent-blue);
-}
-
-.settings-section {
-    display: none;
-}
-
-.settings-section.active {
-    display: block;
-}
-
-.form-group {
-    margin-bottom: 25px;
+.form-group.full-width {
+    grid-column: 1 / -1;
 }
 
 .form-group label {
-    display: flex;
-    align-items: center;
-    gap: 10px;
+    display: block;
     margin-bottom: 8px;
     color: var(--text-primary);
-    font-weight: 500;
+    font-weight: 600;
 }
 
-.form-group input[type="text"],
-.form-group input[type="email"],
-.form-group input[type="password"],
-.form-group input[type="url"],
-.form-group input[type="number"],
-.form-group textarea,
-.form-group select {
+.form-group label i {
+    margin-right: 8px;
+    color: var(--accent-blue);
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
     width: 100%;
-    padding: 12px;
+    padding: 12px 15px;
     border: 1px solid var(--border-color);
-    border-radius: 5px;
-    background: var(--bg-primary);
+    border-radius: 8px;
+    background: var(--bg-tertiary);
     color: var(--text-primary);
     font-size: 14px;
+    font-family: inherit;
 }
 
-.form-group input[type="color"] {
-    width: 100px;
-    height: 40px;
-    border: 1px solid var(--border-color);
-    border-radius: 5px;
-    cursor: pointer;
-}
-
-.form-group input[type="file"] {
-    padding: 10px;
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
 }
 
 .form-group small {
@@ -416,130 +381,149 @@
     font-size: 12px;
 }
 
-.form-group textarea {
-    min-height: 100px;
-    resize: vertical;
+.file-upload-wrapper {
+    margin-bottom: 10px;
+}
+
+.current-image {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 15px;
+    padding: 15px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.current-image img {
+    width: 80px;
+    height: 80px;
+    object-fit: contain;
+    border-radius: 6px;
+    background: white;
+    padding: 5px;
+}
+
+.current-image span {
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.file-upload-wrapper input[type="file"] {
+    display: none;
+}
+
+.file-upload-label {
+    display: inline-block;
+    padding: 10px 20px;
+    background: rgba(52, 152, 219, 0.2);
+    color: var(--accent-blue);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-weight: 600;
+}
+
+.file-upload-label:hover {
+    background: var(--accent-blue);
+    color: white;
+}
+
+.file-upload-label i {
+    margin-right: 8px;
+}
+
+.connection-status {
+    margin-left: 15px;
+    padding: 8px 15px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.connection-status.success {
+    background: rgba(46, 204, 113, 0.2);
+    color: var(--accent-green);
+}
+
+.connection-status.error {
+    background: rgba(231, 76, 60, 0.2);
+    color: var(--accent-red);
+}
+
+.btn-secondary {
+    background: rgba(52, 152, 219, 0.2);
+    color: var(--accent-blue);
+}
+
+.btn-secondary:hover {
+    background: var(--accent-blue);
+    color: white;
 }
 
 .form-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: 30px;
-    padding-top: 20px;
-    border-top: 1px solid var(--border-color);
-}
-
-.payment-method-section {
-    background: var(--bg-primary);
-    padding: 20px;
-    border-radius: 8px;
-    margin-bottom: 25px;
+    margin-top: 40px;
+    padding: 30px;
+    background: var(--bg-secondary);
     border: 1px solid var(--border-color);
-}
-
-.payment-method-section h3 {
-    margin-top: 0;
-    margin-bottom: 20px;
+    border-radius: 12px;
     display: flex;
-    align-items: center;
-    gap: 10px;
-    color: var(--text-primary);
+    gap: 15px;
+    justify-content: center;
 }
 
-.current-logo,
-.current-background {
-    margin-top: 15px;
-    padding: 15px;
-    background: var(--bg-primary);
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-}
-
-.current-logo img {
-    max-width: 200px;
-    max-height: 100px;
-    display: block;
-    margin-bottom: 10px;
-}
-
-.current-background img {
-    max-width: 300px;
-    max-height: 150px;
-    display: block;
-    margin-bottom: 10px;
-    border-radius: 5px;
-}
-
-.alert {
-    padding: 15px 20px;
-    border-radius: 8px;
-    margin-bottom: 20px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.alert-success {
-    background: rgba(39, 174, 96, 0.2);
-    color: #27ae60;
-    border: 1px solid rgba(39, 174, 96, 0.3);
-}
-
-.alert-error {
-    background: rgba(231, 76, 60, 0.2);
-    color: #e74c3c;
-    border: 1px solid rgba(231, 76, 60, 0.3);
-}
-
-.alert-info {
-    background: rgba(52, 152, 219, 0.2);
-    color: #3498db;
-    border: 1px solid rgba(52, 152, 219, 0.3);
+.btn-large {
+    padding: 15px 40px;
+    font-size: 16px;
 }
 </style>
 
 <script>
-function showTab(tabName) {
-    // Hide all sections
-    document.querySelectorAll('.settings-section').forEach(section => {
-        section.classList.remove('active');
+function testProxmoxConnection() {
+    const status = document.getElementById('connectionStatus');
+    status.textContent = 'Testing connection...';
+    status.className = 'connection-status';
+    
+    $.post('{{ url_for("admin_settings") }}', {
+        action: 'test_proxmox'
+    }).done(function(response) {
+        if (response.success) {
+            status.textContent = '✓ Connection successful!';
+            status.className = 'connection-status success';
+        } else {
+            status.textContent = '✗ Connection failed: ' + response.message;
+            status.className = 'connection-status error';
+        }
+    }).fail(function() {
+        status.textContent = '✗ Connection test failed';
+        status.className = 'connection-status error';
     });
-    
-    // Remove active class from all tabs
-    document.querySelectorAll('.settings-tab').forEach(tab => {
-        tab.classList.remove('active');
-    });
-    
-    // Show selected section
-    document.getElementById(tabName + '-tab').classList.add('active');
-    
-    // Add active class to clicked tab
-    event.target.closest('.settings-tab').classList.add('active');
 }
 
-function testEmail() {
-    const email = prompt('Enter email address to send test email:');
-    if (email) {
-        fetch('/admin/settings/test-email', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ email: email })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('Test email sent successfully!');
-            } else {
-                alert('Failed to send test email: ' + data.message);
-            }
-        })
-        .catch(error => {
-            alert('Error: ' + error);
-        });
-    }
+function testEmailConfig() {
+    const status = document.getElementById('emailStatus');
+    status.textContent = 'Sending test email...';
+    status.className = 'connection-status';
+    
+    const email = prompt('Enter email address to send test to:');
+    if (!email) return;
+    
+    $.post('{{ url_for("admin_settings") }}', {
+        action: 'test_email',
+        test_email: email
+    }).done(function(response) {
+        if (response.success) {
+            status.textContent = '✓ Test email sent successfully!';
+            status.className = 'connection-status success';
+        } else {
+            status.textContent = '✗ Failed to send email: ' + response.message;
+            status.className = 'connection-status error';
+        }
+    }).fail(function() {
+        status.textContent = '✗ Email test failed';
+        status.className = 'connection-status error';
+    });
 }
 </script>
 {% endblock %}
