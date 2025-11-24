@@ -20,6 +20,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 # Ensure upload directories exist
 os.makedirs('static/uploads/logos', exist_ok=True)
 os.makedirs('static/uploads/backgrounds', exist_ok=True)
+os.makedirs('static/uploads/payments', exist_ok=True)
 os.makedirs('data', exist_ok=True)
 
 # Configuration
@@ -28,6 +29,14 @@ CPU_THRESHOLD = 90
 RAM_THRESHOLD = 90
 CHECK_INTERVAL = 600
 cpu_monitor_active = True
+
+# OS Options for VPS creation/reinstall
+OS_OPTIONS = {
+    "ubuntu2404": "ubuntu:24.04",
+    "ubuntu2204": "ubuntu:22.04",
+    "debian12": "debian:12",
+    "debian11": "debian:11"
+}
 
 # Data files
 USERS_FILE = 'data/users.json'
@@ -451,6 +460,7 @@ def dashboard():
     
     return render_template('dashboard.html', 
                          user=user, 
+                         balance=user['balance'],  # Explicitly pass balance for display
                          vps_list=user_vps,
                          total_ram=total_ram,
                          total_cpu=total_cpu,
@@ -647,7 +657,6 @@ def payment_proof(buy_id):
         if file:
             filename = secure_filename(f"{buy_id}_{file.filename}")
             filepath = os.path.join('static/uploads/payments', filename)
-            os.makedirs('static/uploads/payments', exist_ok=True)
             file.save(filepath)
             
             payment['screenshot'] = filepath
@@ -790,6 +799,41 @@ def admin_users():
             except ValueError:
                 return jsonify({'success': False, 'message': 'Invalid amount.'})
         
+        elif action == 'edit':
+            target_username = request.form.get('target_username')
+            new_email = request.form.get('email')
+            new_role = request.form.get('role')
+            new_password = request.form.get('password')
+            
+            if target_username not in users:
+                return jsonify({'success': False, 'message': 'User not found.'})
+            
+            updated = False
+            
+            if new_email:
+                # Check email uniqueness excluding self
+                if any(u['email'] == new_email for u_name, u in users.items() if u_name != target_username):
+                    return jsonify({'success': False, 'message': 'Email already exists.'})
+                users[target_username]['email'] = new_email
+                updated = True
+            
+            if new_role and new_role in ['user', 'admin']:
+                if new_role == 'user' and target_username == session['username']:
+                    return jsonify({'success': False, 'message': 'Cannot demote yourself.'})
+                if users[target_username]['role'] != new_role:
+                    users[target_username]['role'] = new_role
+                    updated = True
+            
+            if new_password:
+                users[target_username]['password'] = generate_password_hash(new_password)
+                updated = True
+            
+            if updated:
+                save_users(users)
+                return jsonify({'success': True, 'message': 'User updated successfully.'})
+            else:
+                return jsonify({'success': False, 'message': 'No changes made.'})
+        
         elif action == 'delete':
             target_username = request.form.get('username')
             if target_username in users and users[target_username]['role'] != 'admin':
@@ -819,17 +863,22 @@ def admin_users():
                     return jsonify({'success': False, 'message': 'Cannot demote yourself.'})
                 users[target_username]['role'] = target_role
                 save_users(users)
+                # Update session if self
+                if target_username == session['username']:
+                    session['role'] = target_role
                 return jsonify({'success': True, 'message': f'Role changed to {target_role} for {target_username}.'})
             else:
                 return jsonify({'success': False, 'message': 'Invalid user or role.'})
         
         return redirect(url_for('admin_users'))
     
-    # GET: Render template
+    # GET: Render template - Pass all users including admins for selects
+    all_users = {k: v for k, v in users.items()}  # Include all, including admins
     return render_template('admin/users.html',
                          user=user,
                          settings=settings,
                          users=users,
+                         all_users=all_users,  # For selects in template
                          vps_data=vps_data_global,
                          uptime=uptime)
 
@@ -902,11 +951,16 @@ def admin_vps():
     settings = load_settings()
     vps_data = load_vps_data()
     
+    # Pass all users including admins for select dropdown
+    all_users = {k: v for k, v in users.items()}
+    
     return render_template('admin/vps.html',
                          user=user,
                          settings=settings,
                          vps_data=vps_data,
-                         users=users)
+                         users=users,
+                         all_users=all_users,  # Explicitly pass all users including admins
+                         os_options=OS_OPTIONS)  # Pass OS options for template
 
 @app.route('/admin/vps/create', methods=['POST'])
 @admin_required
@@ -916,6 +970,9 @@ def admin_create_vps():
     ram = int(request.form.get('ram'))
     cpu = int(request.form.get('cpu'))
     disk = int(request.form.get('disk'))
+    os_key = request.form.get('os', 'ubuntu2204')  # Default to Ubuntu 22.04
+    
+    os_image = OS_OPTIONS.get(os_key, 'ubuntu:22.04')
     
     vps_data = load_vps_data()
     if target_username not in vps_data:
@@ -926,7 +983,7 @@ def admin_create_vps():
     ram_mb = ram * 1024
     
     try:
-        execute_lxc_sync(f"lxc init ubuntu:22.04 {container_name} --storage {DEFAULT_STORAGE_POOL}")
+        execute_lxc_sync(f"lxc init {os_image} {container_name} --storage {DEFAULT_STORAGE_POOL}")
         execute_lxc_sync(f"lxc config set {container_name} limits.memory {ram_mb}MB")
         execute_lxc_sync(f"lxc config set {container_name} limits.cpu {cpu}")
         execute_lxc_sync(f"lxc config device set {container_name} root size {disk}GB")
@@ -944,7 +1001,8 @@ def admin_create_vps():
             "suspended": False,
             "suspension_history": [],
             "created_at": datetime.now().isoformat(),
-            "shared_with": []
+            "shared_with": [],
+            "os": os_key  # Store selected OS
         }
         vps_data[target_username].append(vps_info)
         save_vps_data(vps_data)
@@ -1057,6 +1115,10 @@ def admin_vps_action(owner, vps_id, action):
             return jsonify({'success': True, 'message': 'VPS restarted successfully'})
         
         elif action == 'reinstall':
+            # Get OS from form, default to ubuntu:22.04
+            os_key = request.form.get('os', 'ubuntu2204')
+            os_image = OS_OPTIONS.get(os_key, 'ubuntu:22.04')
+            
             # Backup current config
             ram = vps['ram']
             cpu = vps['cpu']
@@ -1064,7 +1126,7 @@ def admin_vps_action(owner, vps_id, action):
             
             # Delete and recreate
             execute_lxc_sync(f"lxc delete {vps_id} --force")
-            execute_lxc_sync(f"lxc init ubuntu:22.04 {vps_id} --storage {DEFAULT_STORAGE_POOL}")
+            execute_lxc_sync(f"lxc init {os_image} {vps_id} --storage {DEFAULT_STORAGE_POOL}")
             
             # Reapply config
             ram_mb = int(ram.replace('GB', '')) * 1024
@@ -1074,6 +1136,7 @@ def admin_vps_action(owner, vps_id, action):
             execute_lxc_sync(f"lxc start {vps_id}")
             
             vps['status'] = 'running'
+            vps['os'] = os_key  # Update OS
             save_vps_data(vps_data)
             return jsonify({'success': True, 'message': 'VPS reinstalled successfully'})
         
@@ -1127,16 +1190,16 @@ def admin_vps_ssh(owner, vps_id):
         try:
             execute_lxc_sync(f"lxc exec {vps_id} -- which tmate")
         except:
-            execute_lxc_sync(f"lxc exec {vps_id} -- apt-get update -y", timeout=300)
-            execute_lxc_sync(f"lxc exec {vps_id} -- apt-get install tmate -y", timeout=300)
+            execute_lxc_sync(f"lxc exec {vps_id} -- sudo apt-get update -y", timeout=300)
+            execute_lxc_sync(f"lxc exec {vps_id} -- sudo apt-get install tmate -y", timeout=300)
         
         # Create SSH session
         session_name = f"svm-session-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         execute_lxc_sync(f"lxc exec {vps_id} -- tmate -S /tmp/{session_name}.sock new-session -d")
-        time.sleep(2)
+        time.sleep(3)
         
-        # Get SSH command
-        ssh_cmd = execute_lxc_sync(f"lxc exec {vps_id} -- tmate -S /tmp/{session_name}.sock display -p '{{{{tmate_ssh}}}}'")
+        # Get SSH command - Fixed f-string for tmate_ssh
+        ssh_cmd = execute_lxc_sync(f"lxc exec {vps_id} -- tmate -S /tmp/{session_name}.sock display -p '#{{tmate_ssh}}'")
         
         return jsonify({
             'success': True,
@@ -1264,9 +1327,10 @@ def admin_approve_payment(buy_id):
     
     container_name = f"svm-vps-{target_user}-{int(time.time())}"
     ram_mb = plan_data['ram'] * 1024
+    os_image = OS_OPTIONS.get('ubuntu2204', 'ubuntu:22.04')  # Default OS for payments
     
     try:
-        execute_lxc_sync(f"lxc init ubuntu:22.04 {container_name} --storage {DEFAULT_STORAGE_POOL}")
+        execute_lxc_sync(f"lxc init {os_image} {container_name} --storage {DEFAULT_STORAGE_POOL}")
         execute_lxc_sync(f"lxc config set {container_name} limits.memory {ram_mb}MB")
         execute_lxc_sync(f"lxc config set {container_name} limits.cpu {plan_data['cpu']}")
         execute_lxc_sync(f"lxc config device set {container_name} root size {plan_data['disk']}GB")
@@ -1284,7 +1348,8 @@ def admin_approve_payment(buy_id):
             "suspension_history": [],
             "created_at": datetime.now().isoformat(),
             "shared_with": [],
-            "plan": plan_data['name']
+            "plan": plan_data['name'],
+            "os": 'ubuntu2204'  # Default OS
         })
         save_vps_data(vps_data)
         
